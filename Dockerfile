@@ -1,40 +1,42 @@
 FROM php:8.4-apache
 
-# System deps + force ONLY prefork MPM
+# 1. Install System Dependencies
 RUN set -eux; \
     apt-get update; \
     apt-get install -y git unzip libzip-dev libpng-dev libonig-dev libxml2-dev curl; \
     docker-php-ext-install pdo pdo_mysql zip fileinfo; \
     a2enmod rewrite; \
-    (a2dismod mpm_event mpm_worker || true); \
-    rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.*; \
-    a2enmod mpm_prefork; \
     rm -rf /var/lib/apt/lists/*
 
-
-# Set Apache to serve Laravel /public
+# 2. Set Apache Root
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
  && sed -ri 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# Composer
+# 3. Install Tooling (Composer & Node)
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Node (for Vite build)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get update && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
+
+# --- THE CACHE TRICK ---
+
+# 4. Copy ONLY dependency files first
+COPY composer.json composer.lock package.json package-lock.json ./
+
+# 5. Install dependencies (This layer stays cached unless json/lock files change)
+RUN composer install --no-dev --no-scripts --no-autoloader \
+    && npm ci
+
+# 6. Copy the rest of the application
 COPY . .
 
-# Install deps + build assets
-RUN composer install --no-dev --optimize-autoloader \
- && npm ci \
- && npm run build
-
-# Permissions
-RUN chown -R www-data:www-data storage bootstrap/cache
+# 7. Finalize build
+RUN composer dump-autoload --optimize \
+    && npm run build \
+    && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 80
 CMD ["apache2-foreground"]
