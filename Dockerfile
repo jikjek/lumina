@@ -1,11 +1,21 @@
 FROM php:8.4-apache
 
-# 1. Install System Dependencies
+# 1. Install System Dependencies + FORCE only prefork MPM
 RUN set -eux; \
     apt-get update; \
     apt-get install -y git unzip libzip-dev libpng-dev libonig-dev libxml2-dev curl; \
     docker-php-ext-install pdo pdo_mysql zip fileinfo; \
     a2enmod rewrite; \
+    \
+    # ✅ HARD reset MPM (remove ALL enabled MPM symlinks)
+    rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf; \
+    \
+    # ✅ enable ONLY ONE MPM
+    a2enmod mpm_prefork; \
+    \
+    # ✅ show loaded MPMs in build logs (should show only prefork)
+    apache2ctl -M | grep mpm; \
+    \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Set Apache Root
