@@ -26,6 +26,10 @@ RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist \
 # App files
 COPY . .
 
+RUN rm -f public/hot
+
+RUN php artisan config:clear && php artisan route:clear && php artisan view:clear
+
 # Build assets + optimize
 RUN npm run build \
     && php artisan config:clear \

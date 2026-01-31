@@ -5,3 +5,4 @@ vendor
 public/build
 public/storage
 storage/*.key
+public/hot
